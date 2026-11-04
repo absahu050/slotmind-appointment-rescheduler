@@ -1,0 +1,3 @@
+package com.hackathon.backend.domain;
+
+public enum TriggerReason { INITIAL, PROVIDER_OFFLINE, SLOT_CANCELLED }

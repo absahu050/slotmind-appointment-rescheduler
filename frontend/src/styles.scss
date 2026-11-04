@@ -1,0 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; }
+html { min-width: 360px; min-height: 100%; background: #f8f9f5; scroll-behavior: smooth; }
+body { min-width: 360px; min-height: 100vh; margin: 0; color: #252721; background: #f8f9f5; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #8b9d68; outline-offset: 2px; }
+::selection { color: #253021; background: #dce5c7; }
