@@ -39,6 +39,8 @@ Open <http://localhost:4200>. The backend runs on port 8080 and creates or updat
 
 The dashboard polls for changes every five seconds.
 
+The development frontend uses `http://localhost:8080/api`. Production builds use the relative `/api` path, so the web host should forward `/api` requests to the backend. If the frontend and backend use separate domains, set `CORS_ALLOWED_ORIGINS` in `backend/.env` and set the API URL in `frontend/src/environments/environment.production.ts` before building.
+
 ## Optional LLM advisor
 
 The rule-based scheduler works without external services. To enable an OpenAI-compatible chat completion endpoint, configure these environment variables before starting the backend:

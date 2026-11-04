@@ -26,9 +26,9 @@
 
 **Options.** Update rows independently; rely only on optimistic versions; or use one database transaction with row locks.
 
-**Decision.** Acceptance locks the appointment and replacement slot, rechecks that the new slot and provider are available, then updates the appointment, both slots, and related suggestion statuses inside one transaction. Entity versions provide an additional stale-write check.
+**Decision.** Recommendation selection runs before the persistence transaction. Acceptance then locks the appointment, replacement provider, and affected slots, rechecks availability, and updates the appointment, slots, and related suggestion statuses inside one transaction. Entity versions provide an additional stale-write check.
 
-**Tradeoffs.** The database owns consistency and a failed write rolls back the entire change. Locks are held through the transaction, so the operation should remain short and avoid remote AI calls.
+**Tradeoffs.** The database owns consistency and a failed write rolls back the entire change. Remote AI calls happen without database row locks; the final write can fail with a conflict if the appointment or recommended slot changed while the advisor was working.
 
 ## 4. Automatic rescheduling triggers
 
@@ -36,10 +36,10 @@
 
 **Options.** Run the loop synchronously; publish an in-process task; or add a durable message broker.
 
-**Decision.** After the provider or slot status transaction commits, `RescheduleProcessor` runs asynchronously in the same application process. Both triggers use the same recommendation pipeline and persist a pending suggestion when a candidate exists. Duplicate pending suggestions for the same appointment and trigger are skipped.
+**Decision.** After the provider or slot status transaction commits, `RescheduleProcessor` runs asynchronously in the same application process. It selects a recommendation outside the persistence transaction, then rechecks the appointment and trigger under lock before saving a pending suggestion. Duplicate pending suggestions for the same appointment and trigger are skipped.
 
 **Tradeoffs.** This meets the demo's asynchronous behavior without requiring infrastructure. Tasks are not durable across process restarts; production use should replace the in-process executor with a persistent queue and an outbox.
 
 ## 5. Extensibility and deferred work
 
-The advisor interface provides a place to add room or equipment constraints and patient preferences. This iteration does not implement waitlists, notifications, multi-clinic routing, provider capacity limits, patient self-service, or SSE reasoning streams. The default H2 database is intended for local demos; PostgreSQL is supported through environment configuration.
+The advisor interface provides a place to add room or equipment constraints and patient preferences. This iteration does not implement waitlists, notifications, multi-clinic routing, provider capacity limits, patient self-service, or SSE reasoning streams. PostgreSQL is the configured default; H2 is used by the automated tests and can be selected for local development through environment configuration.

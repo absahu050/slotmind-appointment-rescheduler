@@ -1,15 +1,11 @@
 import { Component, DestroyRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { forkJoin, timer } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
-
-type Provider = { id: string; name: string; specialty: string; status: string };
-type Slot = { id: string; providerId: string; providerName: string; specialty: string; startTime: string; durationMinutes: number; status: string };
-type Suggestion = { id: string; appointmentId: string; slotId: string; providerId: string; providerName: string; startTime: string; confidence: number; reasoning: string; status: string; triggerReason: string; createdAt: string };
-type Appointment = { id: string; patientName: string; type: string; status: string; provider: Provider; slot: Slot; suggestion: Suggestion | null };
+import { EMPTY, timer } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
+import { Appointment, Provider, Slot, Suggestion } from './models/scheduling.models';
+import { SchedulingApiService } from './services/scheduling-api.service';
 
 @Component({
   selector: 'app-root',
@@ -19,9 +15,8 @@ type Appointment = { id: string; patientName: string; type: string; status: stri
   styleUrl: './app.component.scss'
 })
 export class AppComponent {
-  private readonly http = inject(HttpClient);
+  private readonly api = inject(SchedulingApiService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly api = 'http://localhost:8080/api';
 
   providers: Provider[] = [];
   slots: Slot[] = [];
@@ -39,11 +34,11 @@ export class AppComponent {
 
   constructor() {
     timer(0, 5000).pipe(
-      switchMap(() => forkJoin({
-        providers: this.http.get<Provider[]>(`${this.api}/providers`),
-        slots: this.http.get<Slot[]>(`${this.api}/slots`),
-        appointments: this.http.get<Appointment[]>(`${this.api}/appointments`)
-      })),
+      switchMap(() => this.api.loadDashboard().pipe(catchError(() => {
+        this.loading = false;
+        this.error = 'Could not reach SlotMind. Make sure the backend is running.';
+        return EMPTY;
+      }))),
       takeUntilDestroyed(this.destroyRef)
     ).subscribe({
       next: data => {
@@ -52,10 +47,6 @@ export class AppComponent {
         this.appointments = data.appointments;
         this.loading = false;
         this.error = '';
-      },
-      error: () => {
-        this.loading = false;
-        this.error = 'Could not reach SlotMind. Make sure the backend is running on port 8080.';
       }
     });
   }
@@ -98,7 +89,7 @@ export class AppComponent {
 
   resolve(suggestion: Suggestion, status: 'ACCEPTED' | 'REJECTED'): void {
     this.busy = true;
-    this.http.patch<Suggestion>(`${this.api}/suggestions/${suggestion.id}`, { status }).subscribe({
+    this.api.resolveSuggestion(suggestion.id, status).subscribe({
       next: () => {
         this.busy = false;
         this.refreshMessage(status === 'ACCEPTED' ? 'New appointment time confirmed.' : 'Suggestion declined.');
@@ -110,7 +101,7 @@ export class AppComponent {
 
   setProviderStatus(provider: Provider): void {
     const status = provider.status === 'OFFLINE' ? 'AVAILABLE' : 'OFFLINE';
-    this.http.patch(`${this.api}/providers/${provider.id}/status`, { status }).subscribe({
+    this.api.updateProviderStatus(provider.id, status).subscribe({
       next: () => {
         this.refreshMessage(status === 'OFFLINE' ? `${provider.name} marked offline. Finding replacement times…` : `${provider.name} is back online.`);
         this.reload();
@@ -121,7 +112,7 @@ export class AppComponent {
   }
 
   cancelSlot(appointment: Appointment): void {
-    this.http.patch(`${this.api}/slots/${appointment.slot.id}/status`, { status: 'CANCELLED' }).subscribe({
+    this.api.cancelSlot(appointment.slot.id).subscribe({
       next: () => {
         this.refreshMessage('Cancelled slot. Replacement suggestions are on the way.');
         this.reload();
@@ -132,7 +123,7 @@ export class AppComponent {
   }
 
   suggest(appointment: Appointment): void {
-    this.http.post<Suggestion>(`${this.api}/appointments/${appointment.id}/suggest`, {}).subscribe({
+    this.api.suggestAppointment(appointment.id).subscribe({
       next: () => { this.refreshMessage('A replacement suggestion is ready for review.'); this.reload(); },
       error: err => this.error = err.error?.message ?? 'No suitable replacement time found.'
     });
@@ -148,7 +139,7 @@ export class AppComponent {
   book(): void {
     if (!this.patientName.trim() || !this.selectedProvider || !this.selectedSlot) return;
     this.busy = true;
-    this.http.post<Appointment>(`${this.api}/appointments`, {
+    this.api.createAppointment({
       patientName: this.patientName,
       type: this.appointmentType,
       providerId: this.selectedProvider,
@@ -165,11 +156,7 @@ export class AppComponent {
   }
 
   private reload(): void {
-    forkJoin({
-      providers: this.http.get<Provider[]>(`${this.api}/providers`),
-      slots: this.http.get<Slot[]>(`${this.api}/slots`),
-      appointments: this.http.get<Appointment[]>(`${this.api}/appointments`)
-    }).subscribe({
+    this.api.loadDashboard().subscribe({
       next: data => { this.providers = data.providers; this.slots = data.slots; this.appointments = data.appointments; this.error = ''; },
       error: () => this.error = 'Could not refresh the schedule.'
     });

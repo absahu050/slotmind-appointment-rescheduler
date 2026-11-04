@@ -1,7 +1,7 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { HttpClient } from '@angular/common/http';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AppComponent } from './app.component';
+import { SchedulingApiService } from './services/scheduling-api.service';
 
 describe('AppComponent', () => {
   const providerRows = [
@@ -28,21 +28,22 @@ describe('AppComponent', () => {
   ];
 
   let fixture: ReturnType<typeof TestBed.createComponent<AppComponent>>;
-  let http: jasmine.SpyObj<HttpClient>;
+  let api: jasmine.SpyObj<SchedulingApiService>;
 
   beforeEach(async () => {
-    http = jasmine.createSpyObj<HttpClient>('HttpClient', ['get', 'post', 'patch']);
-    http.get.and.callFake((url: string) => {
-      if (url.endsWith('/providers')) return of(providerRows) as never;
-      if (url.endsWith('/slots')) return of(slotRows) as never;
-      return of(appointments) as never;
-    });
-    http.post.and.returnValue(of({}) as never);
-    http.patch.and.returnValue(of({}) as never);
+    api = jasmine.createSpyObj<SchedulingApiService>('SchedulingApiService', [
+      'loadDashboard', 'updateProviderStatus', 'cancelSlot', 'suggestAppointment', 'resolveSuggestion', 'createAppointment'
+    ]);
+    api.loadDashboard.and.returnValue(of({ providers: providerRows, slots: slotRows, appointments }));
+    api.updateProviderStatus.and.returnValue(of(undefined));
+    api.cancelSlot.and.returnValue(of(undefined));
+    api.suggestAppointment.and.returnValue(of(suggestion));
+    api.resolveSuggestion.and.returnValue(of(suggestion));
+    api.createAppointment.and.returnValue(of(appointments[0]));
 
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [{ provide: HttpClient, useValue: http }]
+      providers: [{ provide: SchedulingApiService, useValue: api }]
     }).compileComponents();
   });
 
@@ -58,7 +59,23 @@ describe('AppComponent', () => {
     expect(app.openSlotCount).toBe(1);
     expect(fixture.nativeElement.textContent).toContain('Aisha Patel');
     expect(fixture.nativeElement.textContent).toContain('We found the next available time.');
-    expect(http.get).toHaveBeenCalledTimes(3);
+    expect(api.loadDashboard).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  }));
+
+  it('keeps polling after the backend is temporarily unavailable', fakeAsync(() => {
+    api.loadDashboard.and.returnValues(
+      throwError(() => new Error('offline')),
+      of({ providers: providerRows, slots: slotRows, appointments })
+    );
+
+    fixture = TestBed.createComponent(AppComponent);
+    tick();
+    expect(fixture.componentInstance.error).toContain('Could not reach SlotMind');
+
+    tick(5000);
+    expect(fixture.componentInstance.error).toBe('');
+    expect(fixture.componentInstance.appointments.length).toBe(2);
     fixture.destroy();
   }));
 
@@ -122,7 +139,7 @@ describe('AppComponent', () => {
     app.selectedSlot = 'SLT-001';
     app.book();
 
-    expect(http.post).toHaveBeenCalledWith('http://localhost:8080/api/appointments', {
+    expect(api.createAppointment).toHaveBeenCalledWith({
       patientName: 'Morgan Lee', type: 'FOLLOW_UP', providerId: 'PRV-001', slotId: 'SLT-001'
     });
     expect(app.modalOpen).toBeFalse();
@@ -136,7 +153,7 @@ describe('AppComponent', () => {
     tick();
     fixture.componentInstance.resolve(suggestion, 'ACCEPTED');
 
-    expect(http.patch).toHaveBeenCalledWith('http://localhost:8080/api/suggestions/SUG-001', { status: 'ACCEPTED' });
+    expect(api.resolveSuggestion).toHaveBeenCalledWith('SUG-001', 'ACCEPTED');
     expect(fixture.componentInstance.notice).toBe('New appointment time confirmed.');
     tick(3600);
     fixture.destroy();
@@ -147,7 +164,7 @@ describe('AppComponent', () => {
     tick();
     fixture.componentInstance.setProviderStatus(providerRows[0]);
 
-    expect(http.patch).toHaveBeenCalledWith('http://localhost:8080/api/providers/PRV-001/status', { status: 'OFFLINE' });
+    expect(api.updateProviderStatus).toHaveBeenCalledWith('PRV-001', 'OFFLINE');
     expect(fixture.componentInstance.notice).toContain('marked offline');
     tick(3600);
     fixture.destroy();
@@ -158,7 +175,7 @@ describe('AppComponent', () => {
     tick();
     fixture.componentInstance.cancelSlot(appointments[1]);
 
-    expect(http.patch).toHaveBeenCalledWith('http://localhost:8080/api/slots/SLT-002/status', { status: 'CANCELLED' });
+    expect(api.cancelSlot).toHaveBeenCalledWith('SLT-002');
     expect(fixture.componentInstance.notice).toContain('Cancelled slot');
     tick(3600);
     fixture.destroy();
@@ -169,7 +186,7 @@ describe('AppComponent', () => {
     tick();
     fixture.componentInstance.suggest(appointments[1]);
 
-    expect(http.post).toHaveBeenCalledWith('http://localhost:8080/api/appointments/APT-002/suggest', {});
+    expect(api.suggestAppointment).toHaveBeenCalledWith('APT-002');
     expect(fixture.componentInstance.notice).toBe('A replacement suggestion is ready for review.');
     tick(3600);
     fixture.destroy();

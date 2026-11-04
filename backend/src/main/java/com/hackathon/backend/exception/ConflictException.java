@@ -1,4 +1,4 @@
-package com.hackathon.backend.api;
+package com.hackathon.backend.exception;
 
 public class ConflictException extends RuntimeException {
     public ConflictException(String message) {
