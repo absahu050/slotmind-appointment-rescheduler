@@ -69,6 +69,10 @@ export class AppComponent {
   get reviewCount(): number { return this.appointments.filter(a => a.status === 'RESCHEDULE_PENDING').length; }
   get confirmedCount(): number { return this.appointments.filter(a => a.status === 'CONFIRMED' || a.status === 'RESCHEDULED').length; }
   get openSlotCount(): number { return this.slots.filter(s => s.status === 'OPEN').length; }
+  get providersWithOpenSlots(): Provider[] {
+    const providerIds = new Set(this.slots.filter(slot => slot.status === 'OPEN').map(slot => slot.providerId));
+    return this.providers.filter(provider => provider.status !== 'OFFLINE' && providerIds.has(provider.id));
+  }
   get selectedProviderSlots(): Slot[] { return this.slots.filter(s => s.providerId === this.selectedProvider && s.status === 'OPEN'); }
   get todayLabel(): string { return new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); }
   get greeting(): string {
@@ -136,7 +140,7 @@ export class AppComponent {
 
   openBooking(): void {
     this.patientName = '';
-    this.selectedProvider = this.providers.find(p => p.status !== 'OFFLINE')?.id ?? '';
+    this.selectedProvider = this.providersWithOpenSlots[0]?.id ?? '';
     this.selectedSlot = '';
     this.modalOpen = true;
   }

@@ -73,6 +73,45 @@ describe('AppComponent', () => {
     fixture.destroy();
   }));
 
+  it('opens booking with a provider that has an open slot', fakeAsync(() => {
+    fixture = TestBed.createComponent(AppComponent);
+    tick();
+    const app = fixture.componentInstance;
+    app.providers = [
+      { id: 'PRV-005', name: 'Dr. Ananya Iyer', specialty: 'SPECIALIST', status: 'BUSY' },
+      { id: 'PRV-002', name: 'Dr. James Okonkwo', specialty: 'SPECIALIST', status: 'AVAILABLE' }
+    ];
+    app.slots = [
+      { ...slotRows[0], id: 'SLT-006', providerId: 'PRV-005', providerName: 'Dr. Ananya Iyer', status: 'BOOKED' },
+      { ...slotRows[0], id: 'SLT-004', providerId: 'PRV-002', providerName: 'Dr. James Okonkwo', status: 'OPEN' }
+    ];
+    app.openBooking();
+    fixture.detectChanges();
+
+    expect(app.providersWithOpenSlots.map(provider => provider.id)).toEqual(['PRV-002']);
+    expect(app.selectedProvider).toBe('PRV-002');
+    const selects = (fixture.nativeElement as HTMLElement).querySelectorAll('.booking-modal select');
+    expect(Array.from((selects[1] as HTMLSelectElement).options).map(option => option.value)).toEqual(['', 'PRV-002']);
+    expect(Array.from((selects[2] as HTMLSelectElement).options).map(option => option.value)).toEqual(['', 'SLT-004']);
+    fixture.destroy();
+  }));
+
+  it('explains when no providers have open slots', fakeAsync(() => {
+    fixture = TestBed.createComponent(AppComponent);
+    tick();
+    const app = fixture.componentInstance;
+    app.slots = slotRows.map(slot => ({ ...slot, status: 'BOOKED' }));
+    app.openBooking();
+    fixture.detectChanges();
+
+    expect(app.providersWithOpenSlots).toEqual([]);
+    expect(app.selectedProvider).toBe('');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('No providers have open times');
+    const bookingButton = (fixture.nativeElement as HTMLElement).querySelector('.booking-modal .accept-button') as HTMLButtonElement;
+    expect(bookingButton.disabled).toBeTrue();
+    fixture.destroy();
+  }));
+
   it('submits a new appointment and refreshes the dashboard', fakeAsync(() => {
     fixture = TestBed.createComponent(AppComponent);
     tick();
